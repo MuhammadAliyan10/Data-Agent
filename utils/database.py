@@ -13,13 +13,12 @@ class DatabaseUtil:
     def schema_context(self, schema_name):
         cursor = None
         schema_info_context = ""
+        connection = self.connection
+        cursor = connection.cursor()
+        schema_info_context = f"Database Schema {schema_name}\n"
         try:
-            connection = self.connection
             if not connection:
                 raise Exception("No active database connection.")
-
-            cursor = connection.cursor()
-            schema_info_context = f"Database Schema {schema_name}\n"
 
             # FIX: Use a proper tuple with a trailing comma (schema_name,)
             cursor.execute(
@@ -69,38 +68,49 @@ class DatabaseUtil:
         return schema_info_context
 
     def execute_query(self, query):
+        cursor = None
         try:
             connection = self.connection
+            if not connection:
+                return "Error: No active database connection."
+
             cursor = connection.cursor()
             cursor.execute(query)
-            result = cursor.fetchall()
-            connection.commit()
-            return str(result)
+
+            # Check if it's a SELECT query that returns rows
+            if cursor.description:
+                result = cursor.fetchall()
+                return str(result)
+            else:
+                connection.commit()
+                return "Query executed successfully."
+
         except Exception as e:
-            print("Error", e)
-            return None
+            if self.connection:
+                self.connection.rollback()
+            # FIX: Return a string instead of None so Pydantic doesn't crash
+            return f"Database Error: {str(e)}"
         finally:
             if cursor:
                 cursor.close()
-            if connection:
-                connection.close()
+            # NOTE: Removed connection.close() so the connection stays alive across graph steps!
 
 
-obj = DatabaseUtil(
-    {
-        "host": "localhost",
-        "port": 5432,
-        "user": "aliyan",
-        "password": "itsaliyan2580",
-        "dbname": "lab1_news",
-    }
-)
+# obj = DatabaseUtil(
+#     {
+#         "host": "localhost",
+#         "port": 5432,
+#         "user": "aliyan",
+#         "password": "itsaliyan2580",
+#         "dbname": "lab1_news",
+#     }
+# )
 
-result = obj.schema_context("public")
+# result = obj.schema_context("public")
 
-if result:
-    with open("db_result.txt", "w") as f:
-        f.write(result)
-    print("Schema context successfully saved to db_result.txt!")
-else:
-    print("Failed to generate schema context.")
+# if result:
+#     with open("db_result.txt", "w") as f:
+#         f.write(result)
+#     print("Schema context successfully saved to db_result.txt!")
+# else:
+#     print("Failed to generate schema context.")
