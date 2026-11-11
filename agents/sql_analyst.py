@@ -1,4 +1,3 @@
-from langgraph.constants import END
 from langchain_core.messages import AIMessage, HumanMessage
 import os
 import sys
@@ -12,7 +11,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from models.schema import AgentSchema, JudgeSchema
 from utils.database import DatabaseUtil
 from utils.llm_pick import llm_pick
-from langgraph.graph import START, StateGraph
+from langgraph.graph import START, StateGraph, END
 
 
 def curate_question(state: AgentSchema) -> AgentSchema:
@@ -45,7 +44,7 @@ def prompt_query_context(state: AgentSchema) -> AgentSchema:
     db_object = DatabaseUtil(conn_details)
     schema_info = db_object.schema_context("public")
 
-    prompt = f"""### SYSTEM ROLE
+    prompt = prompt = f"""### SYSTEM ROLE
 You are an expert PostgreSQL developer. Your sole purpose is to convert natural language into raw, executable PostgreSQL query code.
 
 ### DATABASE SCHEMA & SAMPLES
@@ -55,10 +54,10 @@ You are an expert PostgreSQL developer. Your sole purpose is to convert natural 
 {curate_question}
 
 ### STRICT CONSTRAINTS
-1. Generate a valid, read-only PostgreSQL `SELECT` query that accurately answers the user request based on the schema above.
-2. Unless the user explicitly asks for a specific number of rows, always append `LIMIT 10` to the query.
-3. OUTPUT FORMAT: You must output **ONLY** the SQL query enclosed inside a markdown code block (` ```sql ... ``` `).
-4. DO NOT write any introductory text, explanations, or conversational filler outside the code block.
+1. If the user asks about database structure, tables, columns, or primary keys, query the PostgreSQL `information_schema` (e.g., `information_schema.columns` or `table_constraints`).
+2. For regular data inquiries, use the actual tables listed in the schema above. Read-only `SELECT` queries ONLY.
+3. Unless the user explicitly asks for more, always append `LIMIT 10`.
+4. OUTPUT FORMAT: Output ONLY the SQL query inside a markdown code block (```sql ... ```). No commentary.
 """
     state.prompt_query_context = prompt
 
@@ -215,7 +214,7 @@ sql_agent_graph.add_edge("represent_final_answer", END)
 sql_analyst = sql_agent_graph.compile()
 input_schema = {
     "messages": [],
-    "user_question": "Can you tell me about the primary column?",
+    "user_question": "What is the primary key column of the articles table?",
     "curated_question": "",
     "is_safe": "No",
     "prompt_query_context": "",
@@ -227,3 +226,14 @@ input_schema = {
 final_response = sql_analyst.invoke(input_schema)
 print("\n=== Final Answer ===")
 print(final_response.get("final_response"))
+print("\n=== Query ===")
+print(final_response.get("generated_sql_query"))
+
+
+# from IPython.display import Image
+
+
+# img = Image(sql_analyst.get_graph().draw_mermaid_png())
+
+# with open("Graph.png", "wb") as f:
+#     f.write(img.data)
